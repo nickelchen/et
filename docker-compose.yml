@@ -1,0 +1,7 @@
+ki33:
+  build: ./core
+  command: python -m SimpleHTTPServer
+  volumes:
+    - ./core:/core
+  ports:
+    - "8080:8080"
