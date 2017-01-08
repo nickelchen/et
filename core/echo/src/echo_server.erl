@@ -17,7 +17,6 @@ init([]) ->
 	{ok, []}.
 
 hear(Privacy, Word) ->
-	% io:format("in hear, Word: ~p~n", Word),
 	gen_server:cast(?SERVER, {hear, {Privacy, Word}}).
 
 tell(N) ->
@@ -29,42 +28,38 @@ list() ->
 current() ->
 	ok.
 
+format_pwords(L) -> format_pwords(L, []).
 format_pwords([H | Tail], Acc) ->
-	#pword{privacy=Privacy, word=Word} = H,
-	format_pwords(Tail, [{Privacy, Word} | Acc]);
+	#pword{privacy=Privacy, word=Word, updated=Updated} = H,
+	format_pwords(Tail, [{Privacy, Word, Updated} | Acc]);
 format_pwords([], Acc) ->
-	Acc.
-
-fetch_pwords([H | Tail], N, {Acc, [H | Tail]}) when N > 0 ->
-	fetch_pwords(Tail, N - 1, {[H | Acc], Tail});
-fetch_pwords([], _N, Acc) ->
-	Acc;
-fetch_pwords(_L, 0, Acc) ->
 	Acc.
 
 handle_cast({hear, {Privacy, Word}}, State1) ->
 	CurrentTime = current(),
-	case lists:keyfind(Word, 3, State1) ->
-		{value, Pword} ->
+	State2 = case lists:keyfind(Word, #pword.word, State1) of
+		#pword{} ->
 			% found
-			State2 = lists:keyreplace(Word, 3, State1, NewPword);
+			Pword2 = #pword{privacy=Privacy, word=Word, updated=CurrentTime},
+			lists:keyreplace(Word, #pword.word, State1, Pword2);
 		false ->
-			Pword = #pword{privacy=Privacy, word=Word, updated=CurrentTime},
-			State2 = [Pword | State1]
+			Pword2 = #pword{privacy=Privacy, word=Word, updated=CurrentTime},
+			[Pword2 | State1]
 	end,
-
-	State2 = [#pword{privacy=Privacy, word=Word, updated=CurrentTime} | State1],
 	{noreply, State2}.
 
+%% first in first out.
 handle_call({tell, N}, _From, State) ->
-	#state{last_updated=_LastUpdated, pwords=Pwords} = State,
-	CurrentTime = current(),
-	{Fetched, Tail} = fetch_pwords(Pwords, N, {[], Pwords}),
-	Formatted = format_pwords(Fetched, []),
-	State2 = #state{last_updated=CurrentTime, pwords=Tail},
+	Index = case length(State) >= N of
+		true -> length(State) - N;
+		false -> 0
+	end,
+
+	Fetched = lists:nthtail(Index, State),
+	Formatted = format_pwords(Fetched),
+	State2 = lists:sublist(State, Index),
 	{reply, Formatted, State2};
 
 handle_call(list, _From, State) ->
-	#state{last_updated=_LastUpdated, pwords=Pwords} = State,
-	Formatted = format_pwords(Pwords, []),
+	Formatted = format_pwords(State),
 	{reply, Formatted, State}.
