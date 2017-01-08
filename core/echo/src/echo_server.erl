@@ -1,65 +1,87 @@
 -module(echo_server).
 -behavior(gen_server).
 
--export([hear/2, tell/1, list/0]).
--export([start_link/0, start/0, init/1, handle_call/3, handle_cast/2]).
+-export([create/1, hear/2, tell/2, list/1]).
+-export([start_link/0,
+		 start_link/1,
+		 start/1,
+		 init/1,
+		 handle_call/3,
+		 handle_cast/2]).
 
 -define(SERVER, ?MODULE).
--record(pword, {privacy, word, updated}).
+-record(pword, {word, updated}).
 
 start_link() ->
-	gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+	start_link(default_privacy).
 
-start() ->
-	gen_server:start({local, ?SERVER}, ?MODULE, [], []).
+start_link(Privacy) ->
+	gen_server:start_link(?MODULE, [Privacy], []).
 
-init([]) ->
-	{ok, []}.
+start(Privacy) ->
+	gen_server:start({local, ?SERVER}, ?MODULE, [Privacy], []).
 
-hear(Privacy, Word) ->
-	gen_server:cast(?SERVER, {hear, {Privacy, Word}}).
+init_state(Privacy) ->
+	{Privacy, []}.
 
-tell(N) ->
-	gen_server:call(?SERVER, {tell, N}).
+init([Privacy]) ->
+	{ok, init_state(Privacy)}.
 
-list() ->
-	gen_server:call(?SERVER, list).
+create(Privacy) ->
+	es_sup:start_child(Privacy).
+
+hear(Pid, Word) ->
+	gen_server:cast(Pid, {hear, Word}).
+
+tell(Pid, N) ->
+	gen_server:call(Pid, {tell, N}).
+
+list(Pid) ->
+	gen_server:call(Pid, list).
 
 current() ->
-	ok.
+	calendar:now_to_local_time(erlang:timestamp()).
 
 format_pwords(L) -> format_pwords(L, []).
+
 format_pwords([H | Tail], Acc) ->
-	#pword{privacy=Privacy, word=Word, updated=Updated} = H,
-	format_pwords(Tail, [{Privacy, Word, Updated} | Acc]);
+	#pword{word=Word, updated=Updated} = H,
+	format_pwords(Tail, [{Word, Updated} | Acc]);
 format_pwords([], Acc) ->
 	Acc.
 
-handle_cast({hear, {Privacy, Word}}, State1) ->
+handle_cast({hear, Word}, State1) ->
+	{Privacy, Pwords1} = State1,
 	CurrentTime = current(),
-	State2 = case lists:keyfind(Word, #pword.word, State1) of
+	Pwords2 = case lists:keyfind(Word, #pword.word, Pwords1) of
 		#pword{} ->
 			% found
-			Pword2 = #pword{privacy=Privacy, word=Word, updated=CurrentTime},
-			lists:keyreplace(Word, #pword.word, State1, Pword2);
+			Pword = #pword{word=Word, updated=CurrentTime},
+			lists:keyreplace(Word, #pword.word, Pwords1, Pword);
 		false ->
-			Pword2 = #pword{privacy=Privacy, word=Word, updated=CurrentTime},
-			[Pword2 | State1]
+			Pword = #pword{word=Word, updated=CurrentTime},
+			[Pword | Pwords1]
 	end,
+	State2 = {Privacy, Pwords2},
+	io:format("State is: ~p~n", [State2]),
 	{noreply, State2}.
 
 %% first in first out.
 handle_call({tell, N}, _From, State) ->
-	Index = case length(State) >= N of
-		true -> length(State) - N;
-		false -> 0
+	{Privacy, Pwords} = State,
+	Index = case length(Pwords) - N of
+		Value when Value >=0 -> Value;
+		_Value 				 -> 0
 	end,
 
-	Fetched = lists:nthtail(Index, State),
+	Fetched = lists:nthtail(Index, Pwords),
+	Pwords2 = lists:sublist(Pwords, Index),
+
 	Formatted = format_pwords(Fetched),
-	State2 = lists:sublist(State, Index),
+	State2 = {Privacy, Pwords2},
 	{reply, Formatted, State2};
 
 handle_call(list, _From, State) ->
-	Formatted = format_pwords(State),
+	{_Privacy, Pwords} = State,
+	Formatted = format_pwords(Pwords),
 	{reply, Formatted, State}.
