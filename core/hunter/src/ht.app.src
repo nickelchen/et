@@ -6,6 +6,6 @@
 			 ht_store,
 			 hunter_server]},
   {registered, [ht_sup]},
-  {applications, [kernel, stdlib]},
+  {applications, [kernel, stdlib, inets]},
   {mod, {ht_app, []}}
  ]}.
