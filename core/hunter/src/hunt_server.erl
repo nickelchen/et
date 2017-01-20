@@ -1,7 +1,7 @@
--module(echo_server).
+-module(hunt_server).
 -behavior(gen_server).
 
--export([create/1, hunt/2, tell/2, list/1]).
+-export([create/1, hunt/2, show/2, list/1]).
 -export([start_link/0,
 		 start_link/1,
 		 start/1,
@@ -10,31 +10,31 @@
 		 handle_cast/2]).
 
 -define(SERVER, ?MODULE).
--record(pword, {word, updated}).
+-record(user, {name, intro, updated}).
 
 start_link() ->
-	start_link(default_privacy).
+	start_link(default_tag).
 
-start_link(Privacy) ->
-	gen_server:start_link(?MODULE, [Privacy], []).
+start_link(Tag) ->
+	gen_server:start_link(?MODULE, [Tag], []).
 
-start(Privacy) ->
-	gen_server:start({local, ?SERVER}, ?MODULE, [Privacy], []).
+start(Tag) ->
+	gen_server:start({local, ?SERVER}, ?MODULE, [Tag], []).
 
-init_state(Privacy) ->
-	{Privacy, []}.
+init_state(Tag) ->
+	{Tag, []}.
 
-init([Privacy]) ->
-	{ok, init_state(Privacy)}.
+init([Tag]) ->
+	{ok, init_state(Tag)}.
 
-create(Privacy) ->
-	es_sup:start_child(Privacy).
+create(Tag) ->
+	ht_sup:start_child(Tag).
 
-hunt(Pid, Word) ->
-	gen_server:cast(Pid, {hunt, Word}).
+hunt(Pid, Name) ->
+	gen_server:cast(Pid, {hunt, Name}).
 
-tell(Pid, N) ->
-	gen_server:call(Pid, {tell, N}).
+show(Pid, N) ->
+	gen_server:call(Pid, {show, N}).
 
 list(Pid) ->
 	gen_server:call(Pid, list).
@@ -42,46 +42,43 @@ list(Pid) ->
 current() ->
 	calendar:now_to_local_time(erlang:timestamp()).
 
-format_pwords(L) -> format_pwords(L, []).
+format_users(L) -> format_users(L, []).
 
-format_pwords([H | Tail], Acc) ->
-	#pword{word=Word, updated=Updated} = H,
-	format_pwords(Tail, [{Word, Updated} | Acc]);
-format_pwords([], Acc) ->
+format_users([H | Tail], Acc) ->
+	#user{name=Name, updated=Updated} = H,
+	format_users(Tail, [{Name, Updated} | Acc]);
+format_users([], Acc) ->
 	Acc.
 
-handle_cast({hunt, Word}, State1) ->
-	{Privacy, Pwords1} = State1,
+handle_cast({hunt, Name}, State1) ->
+	{Tag, Users1} = State1,
 	CurrentTime = current(),
-	Pwords2 = case lists:keyfind(Word, #pword.word, Pwords1) of
-		#pword{} ->
+	Users2 = case lists:keyfind(Name, #user.name, Users1) of
+		#user{} ->
 			% found
-			Pword = #pword{word=Word, updated=CurrentTime},
-			lists:keyreplace(Word, #pword.word, Pwords1, Pword);
+			User = #user{name=Name, intro=none, updated=CurrentTime},
+			lists:keyreplace(Name, #user.name, Users1, User);
 		false ->
-			Pword = #pword{word=Word, updated=CurrentTime},
-			[Pword | Pwords1]
+			User = #user{name=Name, intro=none, updated=CurrentTime},
+			[User | Users1]
 	end,
-	State2 = {Privacy, Pwords2},
+	State2 = {Tag, Users2},
 	io:format("State is: ~p~n", [State2]),
 	{noreply, State2}.
 
 %% first in first out.
-handle_call({tell, N}, _From, State) ->
-	{Privacy, Pwords} = State,
-	Index = case length(Pwords) - N of
-		Value when Value >=0 -> Value;
-		_Value 				 -> 0
+handle_call({show, Name}, _From, State) ->
+	{_, Users} = State,
+	io:format("users: ~p, name: ~p ~n", [Users, Name]),
+	Info = case lists:keyfind(Name, #user.name, Users) of
+		#user{intro=Intro, updated=Updated} ->
+			{Intro, Updated};
+		false ->
+			not_found
 	end,
-
-	Fetched = lists:nthtail(Index, Pwords),
-	Pwords2 = lists:sublist(Pwords, Index),
-
-	Formatted = format_pwords(Fetched),
-	State2 = {Privacy, Pwords2},
-	{reply, Formatted, State2};
+	{reply, Info, State};
 
 handle_call(list, _From, State) ->
-	{_Privacy, Pwords} = State,
-	Formatted = format_pwords(Pwords),
+	{_Privacy, Users} = State,
+	Formatted = format_users(Users),
 	{reply, Formatted, State}.

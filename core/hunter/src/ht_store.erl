@@ -2,7 +2,7 @@
 %% store privacy with process PID
 %% you can insert or delete this privacy-pid relationship.
 %%
--module(es_store).
+-module(ht_store).
 
 %% API
 -export([init/0, insert/2, lookup/1, delete/1]).
