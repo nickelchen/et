@@ -42,13 +42,14 @@ list(Pid) ->
 
 current() ->
 	{{Y, M, D}, {H, Mi, S}}= calendar:now_to_local_time(erlang:timestamp()),
-	io_lib:format("~4..0b-~2..0b-~2..0b, ~2..0b:~2..0b:~2..0b", [Y,M,D,H,Mi,S]).
+	Formatted = io_lib:format("~4..0b-~2..0b-~2..0b, ~2..0b:~2..0b:~2..0b", [Y,M,D,H,Mi,S]),
+	lists:flatten(Formatted).
 
 format_users(L) -> format_users(L, []).
 
 format_users([H | Tail], Acc) ->
-	#user{name=Name, updated=Updated} = H,
-	format_users(Tail, [{Name, Updated} | Acc]);
+	#user{name=Name, intro=Intro, updated=Updated} = H,
+	format_users(Tail, [{Name, Intro, Updated} | Acc]);
 format_users([], Acc) ->
 	Acc.
 
