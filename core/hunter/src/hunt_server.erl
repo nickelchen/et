@@ -56,7 +56,8 @@ format_users([], Acc) ->
 handle_cast({hunt, Name}, State1) ->
 	{Tag, Users1} = State1,
 	CurrentTime = current(),
-	{ok, RequestId} = httpc:request(get, {"http://localhost:8000", []}, [], [{sync, false}]),
+	Url = "http://baike.baidu.com/item/" ++ Name,
+	{ok, RequestId} = httpc:request(get, {Url, []}, [], [{sync, false}]),
 
 	Users2 = case lists:keyfind(Name, #user.name, Users1) of
 		#user{} ->
@@ -90,11 +91,14 @@ handle_call(list, _From, State) ->
 
 handle_info({http, {RequestId, Result}}, State1) ->
 	{Tag, Users1} = State1,
-	CurrentTime = current(),
+	{_Code, _Headers, Content} = Result,
+	Tree = mochiweb_html:parse(Content),
+	Intro = mochiweb_xpath:execute("/html/body/div[4]/div[2]/div/div[2]/div[4]/div/text()", Tree),
+	io:format("Intro is ~p~n", [Intro]),
 	Users2 = case lists:keyfind(RequestId, #user.reqid, Users1) of
 		#user{name=Name, reqid=RequestId} ->
 			% found
-			User = #user{name=Name, reqid=RequestId, intro=Result, updated=CurrentTime},
+			User = #user{name=Name, reqid=RequestId, intro=Intro, updated=current()},
 			lists:keyreplace(RequestId, #user.reqid, Users1, User);
 		false ->
 			io:format("not found request in previouse user lists??"),
